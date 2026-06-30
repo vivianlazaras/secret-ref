@@ -1,3 +1,7 @@
+#![deny(missing_docs)]
+#![deny(dead_code)]
+#![deny(unused_imports)]
+#![deny(unused_variables)]
 //! # Example
 //!
 //! Using `SecretRef` to load secrets from configuration without embedding
@@ -35,7 +39,7 @@
 //!
 //! The secret value is never serialized, logged, or embedded in configuration.
 //! Only the reference is stored and transported.
-#![deny(missing_docs)]
+
 use serde_derive::{Deserialize};
 use std::path::PathBuf;
 use std::fmt;
@@ -226,7 +230,7 @@ fn parse_secret_url(s: &str) -> Result<SecretRef, RefParseError> {
             Ok(SecretRef::Env(key.to_string()))
         }
         "file" => Ok(SecretRef::File(
-            PathBuf::from(url.to_file_path().map_err(|_e| RefParseError::UrlToPathFailed(url.to_string()))?)
+            url.to_file_path().map_err(|_e| RefParseError::UrlToPathFailed(url.to_string()))?
         )),
         "http" | "https" => Ok(SecretRef::Http(url)),
         other => Err(RefParseError::UnsupportedSchema(other.to_string())),
@@ -242,6 +246,7 @@ impl FromStr for SecretRef {
 
 impl SecretRef {
     /// fetches the secret associated with this reference using the supplied [`SecretPolicy`]
+    #[cfg(feature = "fetch")]
     pub async fn fetch(
         &self,
         policy: SecretPolicy,
@@ -310,7 +315,6 @@ impl SecretRef {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde::Deserialize;
 
     #[derive(Debug, Deserialize)]
     struct Wrapper {
@@ -440,7 +444,7 @@ mod tests {
 
     #[test]
     fn reject_unknown_scheme() {
-        let err = serde_json::from_str::<Wrapper>(
+        serde_json::from_str::<Wrapper>(
             r#"{ "secret": "vault://foo" }"#
         ).unwrap_err();
 
@@ -448,7 +452,7 @@ mod tests {
 
     #[test]
     fn reject_env_without_key() {
-        let err = serde_json::from_str::<Wrapper>(
+        serde_json::from_str::<Wrapper>(
             r#"{ "secret": "env://" }"#
         ).unwrap_err();
 
@@ -456,7 +460,7 @@ mod tests {
 
     #[test]
     fn reject_invalid_file_url() {
-        let err = serde_json::from_str::<Wrapper>(
+        serde_json::from_str::<Wrapper>(
             r#"{ "secret": "file://relative/path" }"#
         ).unwrap_err();
 
