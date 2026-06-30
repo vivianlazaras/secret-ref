@@ -2,6 +2,8 @@
 name = "secret_ref"
 version = "0.1.1"
 edition = "2024"
+description = "a simple format for referencing secrets, and loading them from different IO sources"
+license = "MIT"
 
 [dependencies]
 reqwest = {version = "0.13.1", optional = true }
