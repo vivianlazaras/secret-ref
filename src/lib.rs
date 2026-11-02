@@ -47,6 +47,8 @@ use std::fmt;
 use serde::ser::{Serialize, Serializer};
 use std::path::Path;
 use std::str::FromStr;
+use tokio::fs::File;
+use tokio::io::AsyncWriteExt;
 
 impl Serialize for SecretRef {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -81,8 +83,8 @@ pub struct SecretValue(String);
 
 impl SecretValue {
     /// get the valueof the underlying secret.
-    pub fn expose(&self) -> &str {
-        &self.0
+    pub fn expose(&self) -> &[u8] {
+        &self.0.as_bytes()
     }
 }
 
@@ -101,6 +103,12 @@ pub enum SecretError {
 
     #[error("http secret fetch failed: {0}")]
     Http(String),
+
+    #[error("secret reference is not a path")]
+    NotAPath,
+
+    #[error("failed to perform operation: {0}")]
+    IOError(#[from] std::io::Error),
 }
 
 /// error that occurs when parsing a ref string fails.
@@ -368,6 +376,23 @@ impl SecretRef {
                 Ok(SecretValue(body.trim_end().to_string()))
             }
             
+        }
+    }
+
+    /// copies the secret to the given file
+    pub async fn copy_to<P: AsRef<Path>>(&self, path: P, policy: SecretPolicy) -> Result<PathBuf, SecretError> {
+        let val = self.fetch(policy).await?.expose().to_vec();
+        let mut file = File::open(path.as_ref()).await?;
+        file.write_all(&val).await?;
+        Ok(path.as_ref().to_path_buf())
+    }
+
+    /// attempts to get the file variant of the enum, if it's not a file
+    /// returns an error indicating as much.
+    pub fn as_path(&self) -> Result<PathBuf, SecretError> {
+        match self {
+            SecretRef::File(path) => Ok(path.clone()),
+            _ => Err(SecretError::NotAPath),
         }
     }
 }
