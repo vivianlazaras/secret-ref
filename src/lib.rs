@@ -41,6 +41,7 @@
 //! Only the reference is stored and transported.
 
 use serde_derive::{Deserialize};
+use serde_with::*;
 use std::path::PathBuf;
 use std::fmt;
 use serde::ser::{Serialize, Serializer};
@@ -178,6 +179,65 @@ pub enum SecretRef {
     File(PathBuf),
     /// secret from http(s) url.
     Http(url::Url),
+}
+
+/// represents an optional secret reference that can support plaintext
+#[derive(Debug, Clone, SerializeDisplay, DeserializeFromStr, PartialEq, Eq, Hash)]
+pub enum RefOpt {
+    /// wraps a secret references such as env:// http:// or file://
+    Ref(SecretRef),
+    /// plain text
+    Plain(String),
+    /// empty value
+    None,
+}
+
+impl RefOpt {
+    /// fetches the underlying secret returning an optional value.
+    #[cfg(feature = "fetch")]
+    pub async fn fetch(
+        &self,
+        policy: SecretPolicy,
+    ) -> Result<Option<SecretValue>, SecretError> {
+        Ok(match self {
+            Self::None => None,
+            Self::Ref(val) => Some(val.fetch(policy).await?),
+            Self::Plain(val) => Some(SecretValue(val.to_string())),
+        })
+    }
+}
+
+impl FromStr for RefOpt {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let trimmed = s.trim();
+        
+        if trimmed.is_empty() {
+            return Ok(RefOpt::None);
+        }
+
+        // Fallback or direct check if SecretRef itself implements FromStr directly
+        if let Ok(secret) = SecretRef::from_str(trimmed) {
+            return Ok(RefOpt::Ref(secret));
+        }
+
+        // Otherwise, treat as a plain string value
+        Ok(RefOpt::Plain(trimmed.to_string()))
+    }
+}
+
+impl fmt::Display for RefOpt {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RefOpt::None => write!(f, ""),
+            RefOpt::Plain(val) => write!(f, "{}", val),
+            RefOpt::Ref(secret) => {
+                // Assuming SecretRef implements Display or can be rendered back out
+                write!(f, "{}", secret)
+            }
+        }
+    }
 }
 
 impl<T: AsRef<Path>> From<T> for SecretRef {
